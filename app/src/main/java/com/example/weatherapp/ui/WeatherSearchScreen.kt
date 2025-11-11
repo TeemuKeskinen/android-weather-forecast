@@ -3,14 +3,7 @@ package com.example.weatherapp.ui
 import android.os.Build
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -20,26 +13,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +27,7 @@ import com.example.weatherapp.data.network.WeatherApiClient
 import com.example.weatherapp.model.CachedWeather
 import com.example.weatherapp.model.LocationSelectionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -85,13 +63,14 @@ fun WeatherSearchScreen(
     var nameError by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
+    var isRefreshing by remember { mutableStateOf(false) }
+    val pullRefreshState = rememberPullToRefreshState()
 
     suspend fun fetchWeather(lat: String, lon: String): Boolean {
         hourlyData = emptyList()
         weeklyData = emptyList()
 
         return try {
-            // Check cache first
             if (WeatherCache.isRecent(lat, lon)) {
                 WeatherCache.get(lat, lon)?.let {
                     hourlyData = it.hourlyData
@@ -100,7 +79,6 @@ fun WeatherSearchScreen(
                 }
             }
 
-            // Fetch from API
             val url =
                 "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&hourly=temperature_2m,rain&current=temperature_2m&timezone=auto"
             val response = withContext(Dispatchers.IO) { example.run(url) }
@@ -141,7 +119,6 @@ fun WeatherSearchScreen(
         }
     }
 
-
     fun isValidCoordinate(lat: String, lon: String): Boolean {
         return try {
             val latNum = lat.toDouble()
@@ -152,7 +129,7 @@ fun WeatherSearchScreen(
         }
     }
 
-    //  Load initial data
+    // Load initial data
     LaunchedEffect(
         LocationSelectionManager.selectedLat,
         LocationSelectionManager.selectedLon,
@@ -168,216 +145,229 @@ fun WeatherSearchScreen(
         }
     }
 
-    // Layout
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("🌤 Weather App") },
-                navigationIcon = {
-                    IconButton(onClick = openDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = !showAddDialog }) {
-                Icon(
-                    imageVector = if (showAddDialog) Icons.Default.Close else Icons.Default.Add,
-                    contentDescription = if (showAddDialog) "Close" else "Add"
-                )
+    PullToRefreshBox(
+        modifier = Modifier.fillMaxSize(),
+        state = pullRefreshState,
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            coroutineScope.launch {
+                isRefreshing = true
+                delay(1500)
+                fetchWeather(latitude, longitude)
+                delay(300)
+                isRefreshing = false
             }
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                "Currently viewing: $locationName ($latitude, $longitude)",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            if (hourlyData.isNotEmpty()) {
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("🌤 Weather App") },
+                    navigationIcon = {
+                        IconButton(onClick = openDrawer) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    }
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { showAddDialog = !showAddDialog }) {
+                    Icon(
+                        imageVector = if (showAddDialog) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = if (showAddDialog) "Close" else "Add"
+                    )
+                }
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    "Today's Hourly Forecast (${LocalDate.now()}):",
+                    "Currently viewing: $locationName ($latitude, $longitude)",
                     style = MaterialTheme.typography.titleMedium
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(hourlyData) { (time, temp, rain) ->
-                        Card(modifier = Modifier.width(100.dp).height(120.dp)) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().padding(8.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(time)
-                                Text("🌡 %.1f°C".format(temp))
-                                Text("🌧 %.1f mm".format(rain))
+
+                if (hourlyData.isNotEmpty()) {
+                    Text(
+                        "Today's Hourly Forecast (${LocalDate.now()}):",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(hourlyData) { (time, temp, rain) ->
+                            Card(modifier = Modifier.width(100.dp).height(120.dp)) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(time)
+                                    Text("🌡 %.1f°C".format(temp))
+                                    Text("🌧 %.1f mm".format(rain))
+                                }
                             }
                         }
                     }
+                } else {
+                    Text(
+                        "No cached or live weather data available for this location yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
-            } else {
-                Text(
-                    "No cached or live weather data available for this location yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
 
-
-            if (weeklyData.isNotEmpty()) {
-                Text("Next 7 Days (15:00):", style = MaterialTheme.typography.titleMedium)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(weeklyData) { (date, temp) ->
-                        Card(modifier = Modifier.width(120.dp).height(100.dp)) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().padding(8.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(date)
-                                Text("🌡 %.1f°C".format(temp))
+                if (weeklyData.isNotEmpty()) {
+                    Text("Next 7 Days (15:00):", style = MaterialTheme.typography.titleMedium)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(weeklyData) { (date, temp) ->
+                            Card(modifier = Modifier.width(120.dp).height(100.dp)) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(date)
+                                    Text("🌡 %.1f°C".format(temp))
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
 
-    // Settings dialog
-    if (showSettings) {
-        AlertDialog(
-            onDismissRequest = { showSettings = false },
-            title = { Text("Settings") },
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Dark theme")
-                    Switch(checked = darkTheme, onCheckedChange = { checked -> onToggleTheme(checked) })
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSettings = false }) { Text("Close") }
-            }
-        )
-    }
-
-    // Add location dialog
-    if (showAddDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("Add New Location") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = {
-                            newName = it
-                            nameError = false
-                        },
-                        label = { Text("Location Name") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = newLat,
-                        onValueChange = {
-                            newLat = it
-                            coordError = false
-                        },
-                        label = { Text("Latitude (-90 to 90)") },
+        // Settings dialog
+        if (showSettings) {
+            AlertDialog(
+                onDismissRequest = { showSettings = false },
+                title = { Text("Settings") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = newLon,
-                        onValueChange = {
-                            newLon = it
-                            coordError = false
-                        },
-                        label = { Text("Longitude (-180 to 180)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    if (nameError) {
-                        Text(
-                            "Missing location name! Please add a name to save.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                    ) {
+                        Text("Dark theme")
+                        Switch(checked = darkTheme, onCheckedChange = { checked -> onToggleTheme(checked) })
                     }
-                    if (coordError) {
-                        Text(
-                            "Invalid coordinates! Please enter latitude between -90 and 90, and longitude between -180 and 180 (e.g., 61.4981, 23.7608).",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSettings = false }) { Text("Close") }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (newName.isBlank()) {
-                        nameError = true
-                        return@TextButton
-                    }
-                    if (!isValidCoordinate(newLat, newLon)) {
-                        coordError = true
-                        return@TextButton
-                    }
+            )
+        }
 
-                    addLocation(newName, newLat, newLon)
-                    locationName = newName
-                    latitude = newLat
-                    longitude = newLon
+        // Add location dialog
+        if (showAddDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddDialog = false },
+                title = { Text("Add New Location") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = {
+                                newName = it
+                                nameError = false
+                            },
+                            label = { Text("Location Name") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = newLat,
+                            onValueChange = {
+                                newLat = it
+                                coordError = false
+                            },
+                            label = { Text("Latitude (-90 to 90)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = newLon,
+                            onValueChange = {
+                                newLon = it
+                                coordError = false
+                            },
+                            label = { Text("Longitude (-180 to 180)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
-                    coroutineScope.launch {
-                        val success = fetchWeather(newLat, newLon)
-                        withContext(Dispatchers.Main) {
-                            if (success) {
-                                Toast.makeText(
-                                    context,
-                                    "Location added successfully!",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Location added — data will load when online.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
+                        if (nameError) {
+                            Text(
+                                "Missing location name! Please add a name to save.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        if (coordError) {
+                            Text(
+                                "Invalid coordinates! Please enter latitude between -90 and 90, and longitude between -180 and 180 (e.g., 61.4981, 23.7608).",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
                     }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newName.isBlank()) {
+                            nameError = true
+                            return@TextButton
+                        }
+                        if (!isValidCoordinate(newLat, newLon)) {
+                            coordError = true
+                            return@TextButton
+                        }
 
-                    showAddDialog = false
-                    newName = ""
-                    newLat = ""
-                    newLon = ""
-                }) {
-                    Text("Save")
+                        addLocation(newName, newLat, newLon)
+                        locationName = newName
+                        latitude = newLat
+                        longitude = newLon
+
+                        coroutineScope.launch {
+                            val success = fetchWeather(newLat, newLon)
+                            withContext(Dispatchers.Main) {
+                                if (success) {
+                                    Toast.makeText(
+                                        context,
+                                        "Location added successfully!",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Location added — data will load when online.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+
+                        showAddDialog = false
+                        newName = ""
+                        newLat = ""
+                        newLon = ""
+                    }) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showAddDialog = false
+                        coordError = false
+                        nameError = false
+                    }) {
+                        Text("Cancel")
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showAddDialog = false
-                    coordError = false
-                    nameError = false
-                }) {
-                    Text("Cancel")
-                }
-            }
-        )
+            )
+        }
     }
 }
