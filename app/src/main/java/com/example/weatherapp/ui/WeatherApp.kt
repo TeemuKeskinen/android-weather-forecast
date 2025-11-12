@@ -224,6 +224,7 @@ fun WeatherAppWithDrawer(
             text = { Text("Are you sure you want to delete $name?") },
             confirmButton = {
                 TextButton(onClick = {
+                    val deleted = locationToDelete
                     savedLocations.remove(locationToDelete)
                     coroutineScope.launch {
                         val jsonArray = JSONArray()
@@ -235,6 +236,32 @@ fun WeatherAppWithDrawer(
                             jsonArray.put(obj)
                         }
                         DataStoreManager.saveLocations(context, jsonArray.toString())
+
+                        if (deleted == defaultLocation) {
+                            if(savedLocations.isNotEmpty()) {
+                                val newDefault = savedLocations.first()
+                                defaultLocation = newDefault
+
+                                val obj = JSONObject()
+                                obj.put("name", newDefault.first)
+                                obj.put("lat", newDefault.second)
+                                obj.put("lon", newDefault.third)
+                                DataStoreManager.saveDefaultLocation(context, obj.toString())
+
+                                LocationSelectionManager.selectedName = newDefault.first
+                                LocationSelectionManager.selectedLat = newDefault.second
+                                LocationSelectionManager.selectedLon = newDefault.third
+
+                                Toast.makeText(
+                                    context,
+                                    "${newDefault.first} set as new default location",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                    defaultLocation = null
+                                    DataStoreManager.saveDefaultLocation(context, "")
+                            }
+                        }
                     }
                     showDeleteDialog = false
                     locationToDelete = null
